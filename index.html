@@ -117,6 +117,8 @@
 
     out.utm_source = r.searchParams.get("utm_source") || "direto";
     out.utm_term = "sid:" + sid;
+    out.sid = sid;
+    out.mcapi_sid = sid;
 
     if (r.searchParams.get("utm_medium")) out.utm_medium = r.searchParams.get("utm_medium");
     if (r.searchParams.get("utm_campaign")) out.utm_campaign = r.searchParams.get("utm_campaign");
@@ -133,6 +135,10 @@
       for (var key in utms) {
         if (!utms.hasOwnProperty(key)) continue;
         if (!utms[key]) continue;
+        if (key === "sid" || key === "mcapi_sid") {
+          u.searchParams.set(key, utms[key]);
+          continue;
+        }
 
         if (key === "utm_term") {
           if (forceUtmTerm) u.searchParams.set("utm_term", utms.utm_term);
