@@ -4,8 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Curso de Bolos Gelados</title>
+    
+    <!-- Otimização para evitar o erro NO_FCP (carrega a fonte e o Tailwind mais rápido) -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <style>
+        /* Fundo branco imediato para o PageSpeed/Lighthouse registrar a pintura da tela (FCP) */
+        html, body { background-color: #ffffff; margin: 0; padding: 0; }
+        
         .funnel-container { max-width: 391px; margin: 0 auto; }
         .step { display: none; }
         .step.active { 
@@ -24,16 +31,8 @@
 
   var API_BASE = "https://brain-saas.vercel.app";
   var PIXEL_PUBLIC_KEY = "px_D7XBCpYqp6dO4nTz";
-  var QUIZ_ID = "BOGE1";
-  var TOTAL_STEPS = 7;
-  var START_SEL = ".btn-start";
-  var FINAL_CTA_SEL = "#quiz-cta-final";
-  var prefix = ["https://lastlink.com","https://kirvano.com","https://pay.kirvano.com","https://checkout.kirvano.com","pay.yampi.com.br","https://pay.cakto.com.br","pay.cakto.com.br"];
-  var TRACK_URL = API_BASE + "/api/track";
-  var QUIZ_TRACK_URL = API_BASE + "/api/quiz/track";
-
-  var firedSteps = {};
-  var firedMeta = {};
+  var prefix = ["https://lastlink.com","https://kirvano.com","https://pay.kirvano.com","https://checkout.kirvano.com","pay.yampi.com.br"];
+  var TRACK_URL = API_BASE.replace(/\/$/, "") + "/api/track";
 
   function getCookie(name) {
     var match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
@@ -77,6 +76,7 @@
   function ensureFbp() {
     var existing = getCookie("_fbp");
     if (existing) return existing;
+
     var fbp = "fb.1." + Date.now() + "." + Math.floor(Math.random() * 1e16);
     setCookie("_fbp", fbp, 90);
     return fbp;
@@ -85,8 +85,10 @@
   function ensureFbc() {
     var existing = getCookie("_fbc");
     if (existing) return existing;
+
     var fbclid = getQueryParam("fbclid");
     if (!fbclid) return null;
+
     var fbc = "fb.1." + Date.now() + "." + fbclid;
     setCookie("_fbc", fbc, 90);
     return fbc;
@@ -112,35 +114,42 @@
     var r = new URL(location.href);
     var sid = getOrCreateSid();
     var out = {};
+
     out.utm_source = r.searchParams.get("utm_source") || "direto";
     out.utm_term = "sid:" + sid;
+
     if (r.searchParams.get("utm_medium")) out.utm_medium = r.searchParams.get("utm_medium");
     if (r.searchParams.get("utm_campaign")) out.utm_campaign = r.searchParams.get("utm_campaign");
     if (r.searchParams.get("utm_content")) out.utm_content = r.searchParams.get("utm_content");
     if (r.searchParams.get("fbclid")) out.fbclid = r.searchParams.get("fbclid");
+
     return out;
   }
 
   function applyUtmsToUrl(resolvedUrl, utms, forceUtmTerm) {
     try {
       var u = new URL(resolvedUrl);
+
       for (var key in utms) {
         if (!utms.hasOwnProperty(key)) continue;
         if (!utms[key]) continue;
+
         if (key === "utm_term") {
           if (forceUtmTerm) u.searchParams.set("utm_term", utms.utm_term);
           else if (!u.searchParams.get("utm_term")) u.searchParams.set("utm_term", utms.utm_term);
           continue;
         }
+
         if (!u.searchParams.get(key)) u.searchParams.set(key, utms[key]);
       }
+
       return u.toString();
     } catch (e) {
       return resolvedUrl;
     }
   }
 
-  function sendTrack(payload) {
+  function sendEvent(payload) {
     try {
       if (navigator.sendBeacon) {
         var blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
@@ -148,54 +157,19 @@
         return;
       }
     } catch (e) {}
+
     fetch(TRACK_URL, {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       keepalive: true
-    }).catch(function () {});
-  }
-
-  function sendQuizEvent(name, stepIndex) {
-    var sid = getOrCreateSid();
-    var utm = buildUtms();
-    var payload = {
-      pixel_id: PIXEL_PUBLIC_KEY,
-      quiz_id: QUIZ_ID,
-      event: name,
-      step_index: stepIndex == null ? null : stepIndex,
-      sid: sid,
-      url: location.href,
-      referrer: typeof document !== "undefined" ? document.referrer || "" : "",
-      utm: utm,
-      fbp: ensureFbp(),
-      fbc: ensureFbc()
-    };
-    try {
-      if (navigator.sendBeacon) {
-        var blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        navigator.sendBeacon(QUIZ_TRACK_URL, blob);
-        return;
-      }
-    } catch (e) {}
-    fetch(QUIZ_TRACK_URL, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      keepalive: true
-    }).catch(function () {});
-  }
-
-  function fireQuizOnce(key, name, stepIndex) {
-    if (firedMeta[key]) return;
-    firedMeta[key] = true;
-    sendQuizEvent(name, stepIndex);
+    }).catch(function(){});
   }
 
   function postEvent(eventName) {
     var sid = getOrCreateSid();
+
     var payload = {
       pixel_id: PIXEL_PUBLIC_KEY,
       sid: sid,
@@ -206,7 +180,8 @@
       fbp: ensureFbp(),
       fbc: ensureFbc()
     };
-    sendTrack(payload);
+
+    sendEvent(payload);
   }
 
   function updateLinks() {
@@ -216,60 +191,11 @@
       var a = anchors[i];
       var href = a.getAttribute("href") || "";
       if (!href) continue;
+
       var resolved = safeResolveUrl(href);
       if (!looksLikeCheckout(resolved)) continue;
+
       a.href = applyUtmsToUrl(resolved, utms, true);
-    }
-  }
-
-  function observeQuizSteps() {
-    if (!window.IntersectionObserver) return;
-    var obs = new IntersectionObserver(function (entries) {
-      for (var i = 0; i < entries.length; i++) {
-        var en = entries[i];
-        if (!en.isIntersecting || en.intersectionRatio < 0.25) continue;
-        var el = en.target;
-        var raw = el.getAttribute("data-quiz-step");
-        if (!raw) continue;
-        var step = parseInt(raw, 10);
-        if (!step || step < 1 || step > TOTAL_STEPS) continue;
-        var k = "step-" + step;
-        if (firedSteps[k]) continue;
-        firedSteps[k] = true;
-        sendQuizEvent("quiz_step_viewed", step);
-        if (step === TOTAL_STEPS) {
-          fireQuizOnce("last-step", "quiz_last_step_viewed", step);
-        }
-      }
-    }, { threshold: [0, 0.25, 0.5, 1] });
-
-    for (var s = 1; s <= TOTAL_STEPS; s++) {
-      var nodes = document.querySelectorAll('[data-quiz-step="' + s + '"]');
-      for (var n = 0; n < nodes.length; n++) obs.observe(nodes[n]);
-    }
-  }
-
-  function bindStartAndCta() {
-    if (START_SEL) {
-      try {
-        var startEl = document.querySelector(START_SEL);
-        if (startEl) {
-          startEl.addEventListener("click", function () {
-            fireQuizOnce("started", "quiz_started", null);
-          }, true);
-        }
-      } catch (e) {}
-    }
-    if (FINAL_CTA_SEL) {
-      try {
-        var cta = document.querySelector(FINAL_CTA_SEL);
-        if (cta) {
-          cta.addEventListener("click", function () {
-            fireQuizOnce("cta", "quiz_cta_clicked", null);
-            fireQuizOnce("finished", "quiz_finished", null);
-          }, true);
-        }
-      } catch (e) {}
     }
   }
 
@@ -277,7 +203,6 @@
     ensureFbp();
     updateLinks();
     postEvent("PageView");
-    sendQuizEvent("quiz_page_view", null);
 
     var tries = 0;
     var t = setInterval(function () {
@@ -290,21 +215,22 @@
       var mo = new MutationObserver(function () { updateLinks(); });
       mo.observe(document.documentElement, { childList: true, subtree: true });
     }
-
-    observeQuizSteps();
-    bindStartAndCta();
   }
 
   document.addEventListener("click", function (e) {
     var el = e.target;
     var a = el && el.closest ? el.closest("a") : null;
     if (!a) return;
+
     var href = a.getAttribute("href") || "";
     if (!href) return;
+
     var resolved = safeResolveUrl(href);
     if (!looksLikeCheckout(resolved)) return;
+
     var utms = buildUtms();
     a.href = applyUtmsToUrl(resolved, utms, true);
+
     postEvent("InitiateCheckout");
   }, true);
 
@@ -320,7 +246,7 @@
     <div id="funnel" class="min-h-screen bg-white flex justify-center w-full">
         
         <!-- PÁGINA 1 - LANDING PAGE -->
-        <div id="step-0" class="step active funnel-container px-4 py-6 w-full">
+        <div id="step-0" class="step active funnel-container px-4 py-6 w-full" data-quiz-step="1">
             <div class="text-center mb-6">
                 <h1 class="text-[28px] leading-[34px] font-bold tracking-[-0.2px] mb-4 text-gray-800">
                     Transforme <span class="text-pink-600">Bolo Gelado</span> em um Negócio 
@@ -330,7 +256,7 @@
             </div>
 
             <div class="mb-6 flex justify-center">
-                <img src="http://cursou.site/wp-content/uploads/2025/09/imgi_13_content.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/09/imgi_13_content.png" 
                      alt="Bolos gelados" class="max-w-full h-auto rounded-lg">
             </div>
 
@@ -360,7 +286,7 @@
         </div>
 
         <!-- PÁGINA 2 - QUIZ 1 -->
-        <div id="step-1" class="step funnel-container px-4 py-8">
+        <div id="step-1" class="step funnel-container px-4 py-8" data-quiz-step="2">
             <div class="text-center mb-6">
                 <h1 class="text-[18px] leading-[22px] font-bold text-black">
                     Você já faz <span class="text-pink-600">Bolo Gelado</span> para vender ou esse seria o seu 
@@ -369,7 +295,7 @@
             </div>
 
             <div class="mb-6 flex justify-center">
-                <img src="http://cursou.site/wp-content/uploads/2025/09/Confeitos-Brilhantes-em-Fundo-Azul.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/09/Confeitos-Brilhantes-em-Fundo-Azul.png" 
                      alt="Confeitos brilhantes em fundo azul" class="max-w-full h-auto rounded-lg">
             </div>
 
@@ -399,7 +325,7 @@
         </div>
 
         <!-- PÁGINA 3 - QUIZ 2 -->
-        <div id="step-2" class="step funnel-container px-4 py-8">
+        <div id="step-2" class="step funnel-container px-4 py-8" data-quiz-step="3">
             <div class="text-center mb-6">
                 <h1 class="text-[18px] leading-[22px] font-bold text-black">
                     Você já viu alguém vendendo <span class="text-pink-600">Bolo Gelado</span> na 
@@ -408,7 +334,7 @@
             </div>
 
             <div class="mb-6 flex justify-center">
-                <img src="http://cursou.site/wp-content/uploads/2025/09/Variedade-de-Bolos-Gourmet-_Mari-Confeiteira_.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/09/Variedade-de-Bolos-Gourmet-_Mari-Confeiteira_.png" 
                      alt="Bolos na cidade" class="max-w-full h-auto rounded-lg">
             </div>
 
@@ -436,7 +362,7 @@
         </div>
 
         <!-- PÁGINA 4 - PROVA SOCIAL E FÓRMULA -->
-        <div id="step-3" class="step funnel-container px-4 py-8">
+        <div id="step-3" class="step funnel-container px-4 py-8" data-quiz-step="4">
             <div class="text-center mb-6">
                 <h1 class="text-[20px] leading-[24px] font-bold text-black mb-4">
                     Esses <span class="text-pink-600">Bolos Gelados</span> são 
@@ -462,7 +388,7 @@
             </div>
 
             <div class="mb-6 flex justify-center">
-                <img src="http://cursou.site/wp-content/uploads/2025/09/imgi_13_content.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/09/imgi_13_content.png" 
                      alt="Demonstração de lucros" class="max-w-full h-auto rounded-lg">
             </div>
 
@@ -516,7 +442,7 @@
         </div>
 
         <!-- PÁGINA 5 - DEPOIMENTOS -->
-        <div id="step-4" class="step funnel-container px-4 py-8">
+        <div id="step-4" class="step funnel-container px-4 py-8" data-quiz-step="5">
             <div class="text-center mb-6">
                 <h1 class="text-[20px] leading-[24px] font-bold text-black mb-4">
                     <span class="text-green-600">Parabéns!</span> Você está no caminho certo.
@@ -532,7 +458,7 @@
             </div>
 
             <div class="mb-6 flex justify-center">
-                <img src="http://cursou.site/wp-content/uploads/2025/09/Depoimentos-de-Alunos-do-Curso-de-Bolos.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/09/Depoimentos-de-Alunos-do-Curso-de-Bolos.png" 
                      alt="Depoimentos de alunas do curso de bolos" class="max-w-full h-auto rounded-lg">
             </div>
 
@@ -542,7 +468,7 @@
         </div>
 
         <!-- PÁGINA 6 - LOADING (A ILUSÃO DE TRABALHO) -->
-        <div id="step-5" class="step funnel-container px-4 py-12">
+        <div id="step-5" class="step funnel-container px-4 py-12" data-quiz-step="6">
             <div class="text-center mb-8">
                 <h1 class="text-[22px] leading-[28px] font-bold text-black mb-4">
                     Montando o seu <span class="text-pink-600">plano perfeito</span>...
@@ -581,7 +507,7 @@
         </div>
 
         <!-- PÁGINA 7 - PÁGINA DE VENDAS -->
-        <div id="step-6" class="step funnel-container px-4 py-8">
+        <div id="step-6" class="step funnel-container px-4 py-8" data-quiz-step="7">
             <div class="text-center mb-6">
                 <h1 class="text-[20px] leading-[24px] font-bold text-black mb-2">
                     <span class="text-green-600">Parabéns!</span> Seu plano está pronto.
@@ -592,7 +518,7 @@
             </div>
 
             <div class="mb-6 flex justify-center">
-                <img src="http://cursou.site/wp-content/uploads/2025/09/ChatGPT-Image-29-de-mai.-de-2025-20_29_01.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/09/ChatGPT-Image-29-de-mai.-de-2025-20_29_01.png" 
                      alt="Bolo gelado profissional" class="max-w-full h-auto rounded-lg">
             </div>
 
@@ -679,7 +605,7 @@
             </div>
 
             <div class="text-center mb-6">
-                <img src="http://cursou.site/wp-content/uploads/2025/08/MOCKUP-CONFEITACADEMY.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/08/MOCKUP-CONFEITACADEMY.png" 
                      alt="Mockup dos cursos" class="max-w-full h-auto rounded-lg">
             </div>
 
@@ -705,11 +631,10 @@
             </div>
 
             <div class="text-center mb-6">
-                <img src="http://cursou.site/wp-content/uploads/2025/09/Curso-Online-de-Bolos-Gelados.png" 
+                <img src="https://cursou.site/wp-content/uploads/2025/09/Curso-Online-de-Bolos-Gelados.png" 
                      alt="Curso Online de Bolos Gelados" class="max-w-full h-auto rounded-lg">
             </div>
 
-            <!-- ADICIONADO O ID: quiz-cta-final NOS DOIS BOTÕES -->
             <button id="quiz-cta-final" onclick="window.open('https://lastlink.com/p/C1AE11592/checkout-payment/', '_blank')" 
                     class="w-full bg-green-600 hover:bg-green-700 text-white text-[16px] font-bold rounded-lg px-4 py-3 mb-4">
                 COMPRAR AGORA!
@@ -727,7 +652,6 @@
                 </p>
             </div>
 
-            <!-- ADICIONADO O ID: quiz-cta-final NOS DOIS BOTÕES -->
             <button id="quiz-cta-final" onclick="window.open('https://lastlink.com/p/C1AE11592/checkout-payment/', '_blank')" 
                     class="w-full bg-green-600 hover:bg-green-700 text-white text-[16px] font-bold rounded-lg px-4 py-3 mb-4">
                 COMPRAR AGORA!
@@ -744,15 +668,15 @@
     <script>
         let currentStep = 0;
         
-        // Preload all images when page loads
+        // Imagens seguras (https) para a Vercel não bloquear e o PageSpeed aprovar
         const imagesToPreload = [
-            "http://cursou.site/wp-content/uploads/2025/05/ChatGPT-Image-29-de-mai.-de-2025-20_01_21.png",
-            "http://cursou.site/wp-content/uploads/2025/09/Confeitos-Brilhantes-em-Fundo-Azul.png",
-            "http://cursou.site/wp-content/uploads/2025/09/imgi_13_content.png",
-            "http://cursou.site/wp-content/uploads/2025/09/Depoimentos-de-Alunos-do-Curso-de-Bolos.png",
-            "http://cursou.site/wp-content/uploads/2025/09/ChatGPT-Image-29-de-mai.-de-2025-20_29_01.png",
-            "http://cursou.site/wp-content/uploads/2025/08/MOCKUP-CONFEITACADEMY.png",
-            "http://cursou.site/wp-content/uploads/2025/09/Curso-Online-de-Bolos-Gelados.png"
+            "https://cursou.site/wp-content/uploads/2025/05/ChatGPT-Image-29-de-mai.-de-2025-20_01_21.png",
+            "https://cursou.site/wp-content/uploads/2025/09/Confeitos-Brilhantes-em-Fundo-Azul.png",
+            "https://cursou.site/wp-content/uploads/2025/09/imgi_13_content.png",
+            "https://cursou.site/wp-content/uploads/2025/09/Depoimentos-de-Alunos-do-Curso-de-Bolos.png",
+            "https://cursou.site/wp-content/uploads/2025/09/ChatGPT-Image-29-de-mai.-de-2025-20_29_01.png",
+            "https://cursou.site/wp-content/uploads/2025/08/MOCKUP-CONFEITACADEMY.png",
+            "https://cursou.site/wp-content/uploads/2025/09/Curso-Online-de-Bolos-Gelados.png"
         ];
 
         imagesToPreload.forEach(src => {
@@ -767,7 +691,6 @@
                 document.getElementById(`step-${currentStep}`).classList.add('active');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
 
-                // Aciona a lógica de carregamento caso estejamos na tela de "Loading"
                 if (currentStep === 5) {
                     startLoadingAnimation();
                 }
@@ -775,13 +698,11 @@
         }
 
         function startLoadingAnimation() {
-            // Revela os itens um por um para gerar expectativa
             setTimeout(() => document.getElementById('load-item-1').classList.remove('opacity-0'), 800);
             setTimeout(() => document.getElementById('load-item-2').classList.remove('opacity-0'), 2000);
             setTimeout(() => document.getElementById('load-item-3').classList.remove('opacity-0'), 3200);
             setTimeout(() => document.getElementById('load-item-4').classList.remove('opacity-0'), 4400);
             
-            // Vai para a página de vendas automaticamente após tudo "carregar"
             setTimeout(() => {
                 nextStep();
             }, 6000);
